@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="cube_bot">
+
+  <!-- Define size and color as parameters -->
+  <xacro:property name="length" value="0.50"/>
+  <xacro:property name="color" value="0 0 1 1"/> <!-- Blue RGBA -->
+
+  <!-- Define a macro for the cube -->
+  <xacro:macro name="cube" params="name length color">
+    <link name="${name}">
+      <visual>
+        <geometry>
+          <box size="${length} ${length} ${length}"/> <!-- Dimensions of the cube -->
+        </geometry>
+        <material name="custom_color">
+          <color rgba="${color}"/>
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <box size="${length} ${length} ${length}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="1.0"/>
+        <origin xyz="0 0 0"/>
+        <inertia ixx="0.166" ixy="0.0" ixz="0.0" iyy="0.166" iyz="0.0" izz="0.166"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <!-- Use the cube macro -->
+  <xacro:cube name="base_link" length="${length}" color="${color}"/>
+
+</robot>

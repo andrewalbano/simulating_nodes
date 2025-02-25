@@ -1,0 +1,12 @@
+<launch>
+    <!-- Publish robot description -->
+    <param name="robot_description" command="$(find xacro)/xacro '$(find simulating_nodes)/model/cube_bot.xacro'" />
+
+    <!-- launch for static map transform -->
+    <node name="fixed_tf_broadcaster" pkg="blue_rov_waypoint_interface" type="fixed_tf_broadcaster.py" output="screen"/>
+    <!-- Start the transformation broadcaster -->
+    <node name="simulator_node" pkg="simulating_nodes" type="kinematic_simulator.py" output="screen" />
+    <!-- Start RViz -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find simulating_nodes)/viz.rviz" required="true" />
+
+</launch>

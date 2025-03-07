@@ -6,6 +6,7 @@ from pymavlink import mavutil
 
 if __name__ == '__main__':
     rospy.init_node('get_attitude_test')
+    rate =rospy.Rate(10)
 
     pub_position_point = rospy.Publisher('sitl_attitude',Point, queue_size=10)
     pub_velocity_point = rospy.Publisher('sitl_attitude_omega',Point, queue_size=10)
@@ -41,4 +42,5 @@ if __name__ == '__main__':
         pub_velocity_point.publish(velocity_point)
         
         # rospy.loginfo_throttle(5, f"roll,pitch,yaw: {point.x}, {point.y}, {point.z}")
-        rospy.sleep(0.1)
+        # rospy.sleep(0.1)
+        rate.sleep()

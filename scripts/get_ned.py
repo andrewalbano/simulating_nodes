@@ -15,6 +15,7 @@ if __name__ == '__main__':
     pos_point = Point()     #in ned frame
     velocity_point = Point()
 
+    rate = rospy.Rate(10)
 
     while not rospy.is_shutdown():
         # gettting position from simulation
@@ -45,4 +46,5 @@ if __name__ == '__main__':
         pub_vel_point.publish(velocity_point)
         
         # rospy.loginfo_throttle(5, f"x,y,z: {point.x}, {point.y}, {point.z}")
-        rospy.sleep(0.1)
+        # rospy.sleep(0.1)
+        rate.sleep()

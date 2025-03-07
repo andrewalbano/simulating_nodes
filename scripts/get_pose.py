@@ -105,6 +105,9 @@ class kinematic_simulator:
         self.pos_z = msg.z
 
     def attitude_callback(self,msg:Point):
+
+        self.roll = msg.x
+        self.pitch = msg.y
         self.yaw = msg.z
           
 

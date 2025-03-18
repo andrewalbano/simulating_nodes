@@ -8,12 +8,19 @@ import time
 import numpy as np
 
 from geometry_msgs.msg import TwistStamped, PoseWithCovarianceStamped, Point, PoseStamped, Twist
-from nav_msgs.msg import Path
+from nav_msgs.msg import Path, Odometry
 
+import time
 
+# start_time = time()
+# ...
+
+# end_time = time()
+# seconds_elapsed = end_time - start_time
 
 class kinematic_simulator:
     def __init__(self):
+        queue_size = 1
         rospy.init_node('simulator_node')
         self.br = tf.TransformBroadcaster()    
 
@@ -37,6 +44,11 @@ class kinematic_simulator:
         self.roll =0.0
         self.pitch=0.0
 
+        self.last_x = 0.0
+        self.last_y= 0.0
+        self.last_z = 0.0
+        self.last_yaw = 0.0
+
         # Initial velocity 
         self.vx =0
         self.vy = 0
@@ -49,21 +61,30 @@ class kinematic_simulator:
 
         self.start_time = time.time()
 
+
+        self.time_step = 1/self.frequency
+
+        self.odom = Odometry() 
+
+
         # subscribe to twist 
         self.sub1 = rospy.Subscriber('sitl_xyz', Point, self.position_callback)
 
         self.sub2 = rospy.Subscriber('sitl_attitude', Point, self.attitude_callback)
+        
 
         self.sub3 = rospy.Subscriber('sitl_velocity_xyz', Point, self.lin_velocity_callback)
 
-        self.sub4 = rospy.Subscriber('sitl_attitude_omega', Point, self.angular_velocity_callback)
+        # self.sub4 = rospy.Subscriber('sitl_attitude_omega', Point, self.angular_velocity_callback)
 
 
-        self.pub1 = rospy.Publisher('/state',PoseWithCovarianceStamped, queue_size=10)
-        self.pub2 = rospy.Publisher('actual_path',Path, queue_size=10)
-        self.pub3 = rospy.Publisher('/dvl/twist',Twist, queue_size=10)
+        self.pub1 = rospy.Publisher('/state',PoseWithCovarianceStamped, queue_size=queue_size )
+        self.pub2 = rospy.Publisher('actual_path',Path, queue_size= queue_size)
+        self.pub3 = rospy.Publisher('/dvl/twist',Twist, queue_size=queue_size)
+        self.pub4 = rospy.Publisher('/odom',Odometry, queue_size=queue_size)
 
-        # self.pub3 = rospy.Publisher('sitl_current_velocity',Twist, queue_size=10)
+
+        
 
     def publish_pose(self):
         msg = PoseWithCovarianceStamped()
@@ -100,16 +121,28 @@ class kinematic_simulator:
 
 
     def position_callback(self,msg:Point):
+        self.last_x = self.pos_x
+        self.last_y = self.pos_y
+        self.last_z = self.pos_z
+    
+
         self.pos_x = msg.x
         self.pos_y = msg.y
         self.pos_z = msg.z
 
+        # self.time_step = self.start_time-time.time()
+        # self.start_time = time.time()
+
     def attitude_callback(self,msg:Point):
+
+     
+        self.last_yaw = self.yaw
+
 
         self.roll = msg.x
         self.pitch = msg.y
         self.yaw = msg.z
-          
+
 
     def lin_velocity_callback(self,msg:Point):
         self.vx = msg.x
@@ -178,7 +211,12 @@ class kinematic_simulator:
         self.vy = velocity[1,0]
         self.vz = velocity[2,0]
 
-
+    def calc_ned_vel(self):
+        
+        self.vx = (self.pos_x - self.last_x)/self.time_step
+        self.vy = (self.pos_y - self.last_y)/self.time_step
+        self.vz = (self.pos_z - self.last_z)/self.time_step
+        self.vyaw = (self.yaw- self.last_yaw)/self.time_step
 
 
     def broadcast_transform(self):
@@ -191,17 +229,56 @@ class kinematic_simulator:
             'NED'        # parent frame, typically 'world' or 'map'
         )
 
+    def publish_odom(self):
+        self.odom.header.stamp = time.time()
+        self.odom.header.frame_id = "NED"
+        self.odom.pose.pose.position.x = self.pos_x
+        self.odom.pose.pose.position.y = self.pos_y
+        self.odom.pose.pose.position.z = self.pos_z
+        q =  quaternion_from_euler(self.roll,self.pitch,self.yaw)
+
+        
+        self.odom.pose.pose.orientation.x = q[0]
+        self.odom.pose.pose.orientation.y = q[1]
+        self.odom.pose.pose.orientation.z = q[2]
+        self.odom.pose.pose.orientation.w = q[3]
+        
+        self.odom.child_frame_id = "base_link"
+
+        self.odom.twist.twist.linear.x = self.vx
+        self.odom.twist.twist.linear.y = self.vy
+        self.odom.twist.twist.linear.z = self.vz
+        self.odom.twist.twist.angular.x = 0
+        self.odom.twist.twist.angular.y = 0
+        self.odom.twist.twist.angular.z = self.vyaw
+        
+        self.pub4.publish(self.odom)
+        
+
+
+
+
+
     def run(self):
         # self.update_position()
         self.broadcast_transform()
+        
+        # self.calc_ned_vel()
+        # note: cuirrently using velocity published in ned format from q ground control 
 
-        # convert the linear velocity in ned to body frame assumes 0 roll and 0 pitch may need to look into using the actual values
+        
+
+        # convert the linear velocity in ned to body frame 
         # the angular velocity is already in body frame 
         self.ned2body() 
-
+       
 
         self.publish_pose()
+        
         self.publish_velocity()
+
+        self.publish_odom()
+        
 
         
         self.rate.sleep()
@@ -213,5 +290,6 @@ if __name__ == '__main__':
         sim = kinematic_simulator()
         while not rospy.is_shutdown():
             sim.run()
+            rospy.loginfo_once(time.time())
     except rospy.ROSInterruptException:
         pass

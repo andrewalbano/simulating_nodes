@@ -8,8 +8,9 @@ import numpy as np
 
 class world_map:
     def __init__(self): 
+        queue_size = 1
         self.rate = rospy.Rate(10)
-        self.pub_map = rospy.Publisher('occupancy_map', OccupancyGrid, queue_size=10)
+        self.pub_map = rospy.Publisher('occupancy_map', OccupancyGrid, queue_size=queue_size)
         
         # initializing the occupancy grid
         self.occupancy = OccupancyGrid()

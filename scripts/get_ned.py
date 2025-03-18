@@ -3,11 +3,11 @@ import rospy
 from geometry_msgs.msg import Point
 from pymavlink import mavutil
 
-
+queue_size = 1
 if __name__ == '__main__':
     rospy.init_node('get_ned_test')
-    pub_pos_point = rospy.Publisher('sitl_xyz',Point, queue_size=10)
-    pub_vel_point = rospy.Publisher('sitl_velocity_xyz',Point, queue_size=10)
+    pub_pos_point = rospy.Publisher('sitl_xyz',Point, queue_size=queue_size)
+    pub_vel_point = rospy.Publisher('sitl_velocity_xyz',Point, queue_size=queue_size)
 
     master = mavutil.mavlink_connection('udpin:0.0.0.0:14552')
     # master = mavutil.mavlink_connection('udpin:0.0.0.0:14550')

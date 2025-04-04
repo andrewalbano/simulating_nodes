@@ -7,17 +7,93 @@ from math import fmod
 import time
 import numpy as np
 
-from geometry_msgs.msg import TwistStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import TwistStamped, PoseWithCovarianceStamped, Twist, PoseStamped
+from nav_msgs.msg import Path
 
 
 
 class kinematic_simulator:
     def __init__(self):
-        rospy.init_node('simulator_node')
-        self.br = tf.TransformBroadcaster()    
+        
+        self.br = tf.TransformBroadcaster()  
+
+
+        self.apply_acc_limits = True
+
+        self.max_linear_acceleration = 0.05
+        self.max_linear_deceleration = 0.1
+
+        # deg/s
+        self.max_angular_acceleration = 1*np.pi/180
+        self.max_angular_deceleration = 3*np.pi/180
+
+
+        # self.path.poses
+        # self.velocity_setpoint = Twist
+        
 
         # Linear velocities in meters per second
-        self.velocity = TwistStamped()
+        # self.velocity = TwistStamped()
+        self.velocity = Twist()
+        self.velocity.linear.x =0
+        self.velocity.linear.y =0
+        self.velocity.linear.z =0
+
+        self.velocity.angular.x=0
+        self.velocity.angular.y=0
+        self.velocity.angular.z=0
+
+ 
+        # Initial position and yaw
+        self.pos_x = 0.0
+        self.pos_y = 0.0
+        self.pos_z = 0.0  
+        self.yaw = 0.0
+        self.roll = 0.0
+        self.pitch = 0.0
+
+        self.current_pose = PoseWithCovarianceStamped()
+        self.current_pose.header.frame_id = 'NED'
+        self.current_pose.pose.pose.position.x =0
+        self.current_pose.pose.pose.position.y =0
+        self.current_pose.pose.pose.position.z =0
+        
+
+        q = quaternion_from_euler(self.roll,self.pitch,self.yaw)
+        self.current_pose.pose.pose.orientation.x = q[0]
+        self.current_pose.pose.pose.orientation.y = q[1]
+        self.current_pose.pose.pose.orientation.z = q[2]
+        self.current_pose.pose.pose.orientation.w = q[3]
+        self.current_pose.pose.covariance = [
+            0.1, 0.01, 0.02, 0.00, 0.00, 0.00,   # Row 1: variance of x and covariances with y, z, roll, pitch, yaw
+            0.01, 0.1, 0.01, 0.00, 0.00, 0.00,   # Row 2: covariance with x, variance of y, covariances with z, roll, pitch, yaw
+            0.02, 0.01, 0.1, 0.00, 0.00, 0.00,   # Row 3: covariance with x, y, variance of z, covariances with roll, pitch, yaw
+            0.00, 0.00, 0.00, 0.1, 0.01, 0.02,   # Row 4: covariance with x, y, z, variance of roll, covariances with pitch, yaw
+            0.00, 0.00, 0.00, 0.01, 0.1, 0.01,   # Row 5: covariance with x, y, z, roll, variance of pitch, covariance with yaw
+            0.00, 0.00, 0.00, 0.02, 0.01, 0.1    # Row 6: covariance with x, y, z, roll, pitch, variance of yaw
+        ]
+        self.state = PoseStamped()
+        self.state.header.frame_id = "NED"
+        self.state.pose.position.x = 0
+        self.state.pose.position.y = 0
+        self.state.pose.position.z = 0
+        self.state.pose.orientation = self.current_pose.pose.pose.orientation
+   
+        self.path = Path()
+        self.path.header.frame_id ='NED'
+        # self.path.poses.append(self.state)
+
+        # new_pose = PoseStamped()
+        # new_pose = self.state
+        # new_pose.pose.position.x = 10
+        # self.state.pose.position.x = 20
+        # self.state.pose.position.y = 0
+        # self.state.pose.position.z = 0
+        # self.state.pose.orientation = self.current_pose.pose.pose.orientation
+        # self.path.poses.append(new_pose)
+        
+
+
         # self.velocity_x = 0.1
         # self.velocity_y = 0.1
         # self.velocity_z = 0.0
@@ -27,37 +103,205 @@ class kinematic_simulator:
         self.frequency = 10
         self.rate = rospy.Rate(self.frequency)  # 10 Hz
 
-        # Initial position and yaw
-        self.pos_x = 0.0
-        self.pos_y = 0.0
-        self.pos_z = 0.0  
-        self.yaw = 0.0
-        self.roll =0.0
-        self.pitch=0.0
-
+  
         self.start_time = time.time()
 
         # subscribe to twist 
-        self.sub1 = rospy.Subscriber('velocity_command', TwistStamped, self.velocity_callback)
-
-        self.pub1 = rospy.Publisher('/dvl/local_position',PoseWithCovarianceStamped, queue_size=10)
-
+        self.sub1 = rospy.Subscriber('velocity_setpoint', Twist, self.velocity_callback)
+       
+        self.pub1 = rospy.Publisher('/state',PoseWithCovarianceStamped, queue_size=1)
+        self.pub2 = rospy.Publisher('/dvl/twist', TwistStamped, queue_size=1)
+       
+        self.pub4 = rospy.Publisher('robot_path',Path, queue_size= 1)
 
     def publish_pose(self):
-        msg = PoseWithCovarianceStamped()
-        msg.header.frame_id = 'NED'
-        msg.pose.pose.position.x = self.pos_x
-        msg.pose.pose.position.y = self.pos_y
-        msg.pose.pose.position.z = self.pos_z
+        # msg = PoseWithCovarianceStamped()        
+        # msg.header.frame_id = "NED"
+        # msg.pose.pose.position.x = self.pos_x
+        # msg.pose.pose.position.y = self.pos_y
+        # msg.pose.pose.position.z = self.pos_z
+
+        # q = quaternion_from_euler(self.roll,self.pitch,self.yaw)
+
+        # msg.pose.pose.orientation.x = q[0]
+        # msg.pose.pose.orientation.y = q[1]
+        # msg.pose.pose.orientation.z = q[2]
+        # msg.pose.pose.orientation.w = q[3]
+
+        # msg.pose.covariance = [
+        #     0.1, 0.01, 0.02, 0.00, 0.00, 0.00,   # Row 1: variance of x and covariances with y, z, roll, pitch, yaw
+        #     0.01, 0.1, 0.01, 0.00, 0.00, 0.00,   # Row 2: covariance with x, variance of y, covariances with z, roll, pitch, yaw
+        #     0.02, 0.01, 0.1, 0.00, 0.00, 0.00,   # Row 3: covariance with x, y, variance of z, covariances with roll, pitch, yaw
+        #     0.00, 0.00, 0.00, 0.1, 0.01, 0.02,   # Row 4: covariance with x, y, z, variance of roll, covariances with pitch, yaw
+        #     0.00, 0.00, 0.00, 0.01, 0.1, 0.01,   # Row 5: covariance with x, y, z, roll, variance of pitch, covariance with yaw
+        #     0.00, 0.00, 0.00, 0.02, 0.01, 0.1    # Row 6: covariance with x, y, z, roll, pitch, variance of yaw
+        # ]
+
+        # self.current_pose.header.frame_id = "NED"
+        # self.current_pose.pose.pose.position.x
+
+
+        # self.pub1.publish(msg)
+        self.pub1.publish(self.current_pose)
+
+        new_pose = PoseStamped()
+        new_pose.header.frame_id = self.current_pose.header.frame_id
+        new_pose.pose = self.current_pose.pose.pose
+        rospy.loginfo(new_pose)
+        
+        self.path.poses.append(new_pose)
+
+        self.pub1.publish(self.current_pose)
+        self.pub3.publish(self.path)
+
+# 
+
+    def linear_velocity_controller(self, v, v_goal):
+        if not v == v_goal:
+            v_error = v_goal - v 
+            # rospy.loginfo(f"v_error : {v_error}")
+    
+            if v_error > 0:
+                # positive to higher positive velocity works 
+                if v >= 0 and v_goal >= 0:
+                    v += self.max_linear_acceleration*(1/self.frequency)
+                    
+                    # prevent overshoot 
+                    if v > v_goal:
+                        v = v_goal
+
+                # negative velocity to lower negative velocity 
+                # elif v <= 0 and v_goal <= 0:
+                elif v <= 0:
+                    
+                    v += self.max_linear_deceleration*(1/self.frequency)
+                    
+                    # prevent overshoot 
+                    if v > v_goal:
+                        v = v_goal
+
+
+            if v_error < 0:
+                # Positive velocity to lower positive velocity works 
+                if v >= 0:
+                    v -= self.max_linear_deceleration*(1/self.frequency)
+                    # prevent overshoot 
+                    if v < v_goal:
+                        v = v_goal
+
+                # negative velocity to higher negative velocity 
+                elif v <= 0 and v_goal <= 0:
+                    v -= self.max_linear_acceleration*(1/self.frequency)
+                    
+                    # prevent overshoot 
+                    if v < v_goal:
+                        v = v_goal
+
+
+        return v            
+            
+    def angular_velocity_controller(self, v, v_goal):
+        if not v == v_goal:
+            v_error = v_goal - v 
+            # rospy.loginfo(f"v_error : {v_error}")
+    
+            if v_error > 0:
+                # positive to higher positive velocity works 
+                if v >= 0 and v_goal >= 0:
+                    v += self.max_angular_acceleration*(1/self.frequency)
+                    
+                    
+                    # prevent overshoot 
+                    if v > v_goal:
+                        v = v_goal
+
+                # negative velocity to lower negative velocity 
+                # elif v <= 0 and v_goal <= 0:
+                elif v <= 0:
+                    
+                    v += self.max_angular_deceleration*(1/self.frequency)
+                    
+                    # prevent overshoot 
+                    if v > v_goal:
+                        v = v_goal
+
+
+            if v_error < 0:
+                # Positive velocity to lower positive velocity works 
+                if v >= 0:
+                    v -= self.max_angular_deceleration*(1/self.frequency)
+                    # prevent overshoot 
+                    if v < v_goal:
+                        v = v_goal
+
+                # negative velocity to higher negative velocity 
+                elif v <= 0 and v_goal <= 0:
+                    v -= self.max_angular_acceleration*(1/self.frequency)
+                    
+                    # prevent overshoot 
+                    if v < v_goal:
+                        v = v_goal
+
+        # rospy.loginfo(f"v ={v}")
+
+        return v
+                
+                
+    def velocity_callback(self,msg:Twist):
+
+        if self.apply_acc_limits:
+
+            velocity_setpoint = Twist()
+            velocity_setpoint = msg
+      
+            self.velocity.linear.x = self.linear_velocity_controller(self.velocity.linear.x, velocity_setpoint.linear.x)
+            self.velocity.linear.y = self.linear_velocity_controller(self.velocity.linear.y, velocity_setpoint.linear.y)
+            self.velocity.linear.z = self.linear_velocity_controller(self.velocity.linear.z, velocity_setpoint.linear.z)
+            self.velocity.angular.z = self.angular_velocity_controller(self.velocity.angular.z, velocity_setpoint.angular.z)
+        else:
+            self.velocity = msg
+        
+        # rospy.loginfo('got velocity setpoint')
+
+    def publish_velocity(self):
+        msg = TwistStamped()
+        msg.header.frame_id = "base_link"
+        msg.twist = self.velocity
+        self.pub2.publish(msg)
+
+    def update_position(self):
+        # extracting the current pose as a rotation matrix and converting to 3 by 3
+        current_rotation = euler_matrix(self.roll, self.pitch, self.yaw)
+       
+        # linear displacement in the body frame
+        x_rel = self.velocity.linear.x * (1.0 / self.frequency)
+        y_rel = self.velocity.linear.y * (1.0 / self.frequency)
+        z_rel = self.velocity.linear.z * (1.0 / self.frequency)
+        p_rel = np.array([[x_rel],[y_rel],[z_rel]])
+
+        # converting the displacement due to linear velocity to be relative to the inertial frame (NED)
+        # self.pos_x += current_rotation[0,0:3]@ p_rel
+        # self.pos_y += current_rotation[1,0:3]@ p_rel
+        # self.pos_z += current_rotation[2,0:3]@ p_rel
+
+        # self.yaw += self.velocity.angular.z* (1.0 / self.frequency)
+
+        x = current_rotation[0,0:3]@ p_rel
+        y = current_rotation[1,0:3]@ p_rel
+        z = current_rotation[2,0:3]@ p_rel
+
+        self.current_pose.pose.pose.position.x += x[0]
+        self.current_pose.pose.pose.position.y += y[0]
+        self.current_pose.pose.pose.position.z += z[0]
+
+        self.yaw += self.velocity.angular.z* (1.0 / self.frequency)
 
         q = quaternion_from_euler(self.roll,self.pitch,self.yaw)
-
-        msg.pose.pose.orientation.x = q[0]
-        msg.pose.pose.orientation.y = q[1]
-        msg.pose.pose.orientation.z = q[2]
-        msg.pose.pose.orientation.w = q[3]
-
-        msg.pose.covariance = [
+        self.current_pose.pose.pose.orientation.x = q[0]
+        self.current_pose.pose.pose.orientation.y = q[1]
+        self.current_pose.pose.pose.orientation.z = q[2]
+        self.current_pose.pose.pose.orientation.w = q[3]
+        self.current_pose.pose.covariance = [
             0.1, 0.01, 0.02, 0.00, 0.00, 0.00,   # Row 1: variance of x and covariances with y, z, roll, pitch, yaw
             0.01, 0.1, 0.01, 0.00, 0.00, 0.00,   # Row 2: covariance with x, variance of y, covariances with z, roll, pitch, yaw
             0.02, 0.01, 0.1, 0.00, 0.00, 0.00,   # Row 3: covariance with x, y, variance of z, covariances with roll, pitch, yaw
@@ -65,169 +309,88 @@ class kinematic_simulator:
             0.00, 0.00, 0.00, 0.01, 0.1, 0.01,   # Row 5: covariance with x, y, z, roll, variance of pitch, covariance with yaw
             0.00, 0.00, 0.00, 0.02, 0.01, 0.1    # Row 6: covariance with x, y, z, roll, pitch, variance of yaw
         ]
-        self.pub1.publish(msg)
 
-    def velocity_callback(self,msg:TwistStamped):
-        self.velocity = msg
-
-    
-    def update_position(self):
-        # Calculate elapsed time
-        # elapsed = time.time() - self.start_time
-
-        # extracting the current pose as a rotation matrix and converting to 3 by 3
-        current_rotation = euler_matrix(self.roll, self.pitch, self.yaw)
-        # current_rotation = current_rotation[:3,:3]
-
-        #current position
-        # p_current= np.array([[self.pos_x ],[self.pos_y],[self.pos_z]])
-
-        # linear displacement in the body frame
-        x_rel = self.velocity.twist.linear.x * (1.0 / self.frequency)
-        y_rel = self.velocity.twist.linear.y * (1.0 / self.frequency)
-        z_rel = self.velocity.twist.linear.z * (1.0 / self.frequency)
-        p_rel = np.array([[x_rel],[y_rel],[z_rel]])
-
-        # converting the displacement due to linear velocity to be relative to the inertial frame (NED)
-        # delta_p = current_rotation @ p_rel
-
-        self.pos_x += current_rotation[0,0:3]@ p_rel
-        self.pos_y += current_rotation[1,0:3]@ p_rel
-        self.pos_z += current_rotation[2,0:3]@ p_rel
-
-
-        self.yaw += self.velocity.twist.angular.z * (1.0 / self.frequency)
-        '''
-        # # skew symmetric matrix of angular velocity (4 by 4)
-        # angular_velocity_skew = np.array([[0, -1* self.velocity.twist.angular.z, self.velocity.twist.angular.y],
-        #                                   [self.velocity.twist.angular.z, 0, -1*self.velocity.twist.angular.x],
-        #                                   [-1*self.velocity.twist.angular.y, self.velocity.twist.angular.x,0],
-        #                                   [0,0,0,1]
-        #                                   ])
-        
-        # # compute the rotation matrix for the time interval
-        # rotation_matrix = (angular_velocity_skew * (1.0 / self.frequency))@current_rotation
-        
-        # # get euler angles
-        # self.roll = 0
-        # self.pitch = 0
-        # _,_,self.yaw  = euler_from_matrix(rotation_matrix) 
-        
-
-
-
-
-        
-        # new attitude is given by the following     
-        # new_rotation = delta_rotation@current_rotation 
-        
-        # p_new = p_current + delta_p
-
-
-
-
-        # T_new = np.eye(4)
-        # T_new[:3,:3] = new_rotation
-        # T_new[0,3] = p_new[0]
-        # T_new[1,3] = p_new[1]
-        # T_new[2,3] = p_new[2]
-
-        # self.pos_x = float(p_new[0])
-        # self.pos_y = float(p_new[1])
-        # self.pos_z = float(p_new[2])
-
-        # euler = euler_from_matrix(T_new)
-
-        # self.roll, self.pitch, self.yaw = float(euler[0]),float(euler[1]),float(euler[2])
-        
-
-
-
-        # self.velocity.twist.linear.x * (1.0 / self.frequency)
-        # # self.pos_y += self.velocity.twist.linear.y * (1.0 / self.frequency)
-        # # self.pos_z 
-        
-
-
-        # # Update yaw based on angular velocity
-        # self.yaw += self.velocity.twist.angular.z * (1.0 / self.frequency)
-
-        # # get relative transform in base_frame and then convert it to ned _FrAME
-        # # Update position based on linear velocity in base_link  frame
-        # x_rel = self.velocity.twist.linear.x * (1.0 / self.frequency)
-        # y_rel = self.velocity.twist.linear.y * (1.0 / self.frequency)
-        # z_rel = self.velocity.twist.linear.z * (1.0 / self.frequency)
-
-        # # Update yaw based on angular velocity in base_link frame
-        # roll_rel = 0 
-        # pitch_rel = 0
-        # yaw_rel= self.velocity.twist.angular.z * (1.0 / self.frequency)
-        
-        # T = translation_matrix([x_rel,y_rel,z_rel])
-        # body_transform = T
-        # # R = euler_matrix(roll_rel,pitch_rel,yaw_rel)
-        # # body_transform = concatenate_matrices(R,T)
-
-
-        # # generate transform current position transform in ned frame
-        # T = translation_matrix([self.pos_x,self.pos_y,self.pos_z])
-        # R = euler_matrix(self.roll, self.pitch, self.yaw)
-        # current_transform = concatenate_matrices(R,T)
-
-        # # updated transform of new position
-        # updated_transform = concatenate_matrices(current_transform, body_transform)
-        # # updated_transform = concatenate_matrices(body_transform, current_transform, )
-        
-        # # getting translations and rotation
-        # translation = translation_from_matrix(updated_transform)
-        # euler = euler_from_matrix(updated_transform)
-
-        # updating pose
-
-        # self.pos_x += x_rel
-        
-        # angular_velocity_skew = np.array([[0, -1* self.velocity.twist.angular.z, self.velocity.twist.angular.y],
-        #                                   [self.velocity.twist.angular.z, 0, -1*self.velocity.twist.angular.x],
-        #                                   [-1*self.velocity.twist.angular.y, self.velocity.twist.angular.x,0],
-        #                                   ])
-
-
-        # =,self.pos_y,self.pos_z = translation[0], translation[1], translation[2]
-        
-        # # self.roll, self.pitch, self.yaw = euler[0],euler[1],euler[2]
-
-        # # Update yaw based on angular velocity
-        # self.yaw += self.velocity.twist.angular.z * (1.0 / self.frequency)
-
-        # causing issue when frame is rotated
-        # # Update position based on linear velocity
-        # self.pos_x += self.velocity.twist.linear.x * (1.0 / self.frequency)
-        # self.pos_y += self.velocity.twist.linear.y * (1.0 / self.frequency)
-        # self.pos_z += self.velocity.twist.linear.z * (1.0 / self.frequency)
-        # # Update yaw based on angular velocity
-        # self.yaw += self.velocity.twist.angular.z * (1.0 / self.frequency)
-        '''
+        self.pub1.publish(self.current_pose)
 
     def broadcast_transform(self):
         # Send the updated transform
+        # self.br.sendTransform(
+        #     (self.pos_x, self.pos_y, self.pos_z),
+        #     quaternion_from_euler(self.roll, self.pitch, self.yaw),
+        #     rospy.Time.now(),
+        #     'base_link',   # child frame
+        #     'NED'        # parent frame, typically 'world' or 'map'
+        # )
         self.br.sendTransform(
-            (self.pos_x, self.pos_y, self.pos_z),
+            (self.current_pose.pose.pose.position.x, self.current_pose.pose.pose.position.y, self.current_pose.pose.pose.position.z),
             quaternion_from_euler(self.roll, self.pitch, self.yaw),
             rospy.Time.now(),
             'base_link',   # child frame
             'NED'        # parent frame, typically 'world' or 'map'
         )
 
+    def publish_path(self):
+        # self.new_pose = PoseStamped()
+        # self.new_pose.header.frame_id = self.current_pose.header.frame_id
+        
+        # self.new_pose.pose.position.x = self.current_pose.pose.pose.position.x
+        # self.new_pose.pose.position.y = self.current_pose.pose.pose.position.y
+        # self.new_pose.pose.position.z = self.current_pose.pose.pose.position.z
+        # self.new_pose.pose.orientation.x = self.current_pose.pose.pose.orientation.x
+        # self.new_pose.pose.orientation.y = self.current_pose.pose.pose.orientation.y
+        # self.new_pose.pose.orientation.z = self.current_pose.pose.pose.orientation.z
+        # self.new_pose.pose.orientation.w = self.current_pose.pose.pose.orientation.w       
+        # self.state.header.frame_id = "NED"
+        # self.state.pose = self.current_pose.pose.pose
+        new_pose = PoseStamped()
+        new_pose.header.frame_id = 'NED'
+        new_pose.pose.position.x = 0 + self.current_pose.pose.pose.position.x
+        new_pose.pose.position.y = 0 + self.current_pose.pose.pose.position.y
+        new_pose.pose.position.z = 0 + self.current_pose.pose.pose.position.z
+        new_pose.pose.orientation.x = 0 + self.current_pose.pose.pose.orientation.x
+        new_pose.pose.orientation.y = 0 + self.current_pose.pose.pose.orientation.y
+        new_pose.pose.orientation.z = 0 + self.current_pose.pose.pose.orientation.z
+        new_pose.pose.orientation.w = 0 + self.current_pose.pose.pose.orientation.w  
+       
+     
+
+        self.path.poses.append(new_pose)
+
+        self.pub4.publish(self.path)
+
+       
+
+
     def run(self):
+        self.publish_velocity()
         self.update_position()
+        self.publish_path()
         self.broadcast_transform()
-        self.publish_pose()
+        # self.publish_pose()
         self.rate.sleep()
 
+
 if __name__ == '__main__':
-    try:
-        sim = kinematic_simulator()
-        while not rospy.is_shutdown():
-            sim.run()
-    except rospy.ROSInterruptException:
-        pass
+    rospy.init_node('kinematic_simulation')
+    rospy.loginfo("kinematic simulator node running")
+    sim = kinematic_simulator()
+    
+    while not rospy.is_shutdown():
+        sim.run()
+        # sim.publish_velocity()
+        # sim.update_position()
+        # sim.broadcast_transform()
+        # sim.publish_pose()
+        # sim.publish_path()
+
+            
+        # path.poses.append(sim.get_pose())
+        # sim.pub3.publish(path)
+        
+        
+        
+        # rospy.loginfo_throttle(5,sim.path)
+        # sim.rate.sleep()
+
+    # except rospy.ROSInterruptException:
+    #     pass

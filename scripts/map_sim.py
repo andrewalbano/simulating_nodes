@@ -70,6 +70,7 @@ class world_map:
 
 if __name__ == '__main__':
     rospy.init_node('map_sim')
+    rospy.loginfo_once("publishing map")
     world= world_map()
     world.create_grid()
     world.populate_random_obstacles()

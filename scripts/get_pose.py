@@ -9,6 +9,7 @@ import numpy as np
 
 from geometry_msgs.msg import TwistStamped, PoseWithCovarianceStamped, Point, PoseStamped, Twist
 from nav_msgs.msg import Path, Odometry
+from std_msgs.msg import Float32
 
 import time
 
@@ -20,13 +21,19 @@ import time
 
 class kinematic_simulator:
     def __init__(self):
+
+        n = 1 #number of data points to consider
+        self.alpha = 2 / (n + 1)
+        self.alpha =0.9
+
+
         queue_size = 1
         rospy.init_node('simulator_node')
         self.br = tf.TransformBroadcaster()    
 
         # Linear velocities in meters per second
         # self.velocity = TwistStamped()
-        self.velocity = Twist()
+        self.velocity = TwistStamped()
         # self.velocity_x = 0.1
         # self.velocity_y = 0.1
         # self.velocity_z = 0.0
@@ -55,6 +62,9 @@ class kinematic_simulator:
         self.vz = 0
         self.vyaw = 0
 
+        self.vx_data = []
+        
+
 
         self.path = Path()
         self.path.header.frame_id='NED'
@@ -75,13 +85,17 @@ class kinematic_simulator:
 
         self.sub3 = rospy.Subscriber('sitl_velocity_xyz', Point, self.lin_velocity_callback)
 
-        # self.sub4 = rospy.Subscriber('sitl_attitude_omega', Point, self.angular_velocity_callback)
+        self.sub4 = rospy.Subscriber('sitl_attitude_omega', Point, self.angular_velocity_callback)
 
 
         self.pub1 = rospy.Publisher('/state',PoseWithCovarianceStamped, queue_size=queue_size )
         self.pub2 = rospy.Publisher('actual_path',Path, queue_size= queue_size)
-        self.pub3 = rospy.Publisher('/dvl/twist',Twist, queue_size=queue_size)
+        self.pub3 = rospy.Publisher('/dvl/twist',TwistStamped, queue_size=queue_size)
         self.pub4 = rospy.Publisher('/odom',Odometry, queue_size=queue_size)
+        self.pub5 = rospy.Publisher('/plot_vx',Float32, queue_size=queue_size)
+        self.pub6 = rospy.Publisher('/plot_vy',Float32, queue_size=queue_size)
+        self.pub7 = rospy.Publisher('/plot_vz',Float32, queue_size=queue_size)
+        self.pub8 = rospy.Publisher('/plot_vyaw',Float32, queue_size=queue_size)
 
 
         
@@ -135,7 +149,6 @@ class kinematic_simulator:
 
     def attitude_callback(self,msg:Point):
 
-     
         self.last_yaw = self.yaw
 
 
@@ -145,12 +158,23 @@ class kinematic_simulator:
 
 
     def lin_velocity_callback(self,msg:Point):
+
         self.vx = msg.x
         self.vy = msg.y
         self.vz = msg.z
+
+        # exponential filtering
+       
+        # self.vx = self.alpha * msg.x + (1-self.alpha)*self.vx
+        # self.vy = self.alpha * msg.y + (1-self.alpha)*self.vy
+        # self.vz = self.alpha * msg.z + (1-self.alpha)*self.vz
         
     def angular_velocity_callback(self,msg:Point):
         self.vyaw = msg.z
+
+        # exponential filtering
+     
+        # self.vyaw = self.alpha * msg.z + (1-self.alpha)*self.vyaw
     
 
 
@@ -191,17 +215,25 @@ class kinematic_simulator:
         # self.velocity.twist.angular.y = 0
         # self.velocity.twist.angular.z = self.vyaw
 
- 
-        self.velocity.linear.x = self.vx
-        self.velocity.linear.y = self.vy
-        self.velocity.linear.z = self.vz
-        self.velocity.angular.x = 0
-        self.velocity.angular.y = 0
-        self.velocity.angular.z = self.vyaw
+        self.velocity.header.frame_id = "base_link"
+        self.velocity.twist.linear.x = self.vx
+        self.velocity.twist.linear.y = self.vy
+        self.velocity.twist.linear.z = self.vz
+        self.velocity.twist.angular.x = 0
+        self.velocity.twist.angular.y = 0
+        self.velocity.twist.angular.z = self.vyaw
         self.pub3.publish(self.velocity)
+
+        self.pub5.publish(self.vx)
+        self.pub6.publish(self.vy)
+        self.pub7.publish(self.vz)
+        self.pub8.publish(self.vyaw*180/np.pi)
+
+        
 
     def ned2body(self):
         R = np.linalg.inv(euler_matrix(self.roll,self.pitch, self.yaw))
+        # R = np.linalg.inv(euler_matrix(0,0, self.yaw))
         v = np.matrix([[self.vx],[self.vy],[self.vz],[1]])
 
         # rospy.loginfo(f"NED VELOCITY: {self.vx},{self.vy}")
@@ -211,6 +243,7 @@ class kinematic_simulator:
         self.vy = velocity[1,0]
         self.vz = velocity[2,0]
 
+    # NO LONGER USED
     def calc_ned_vel(self):
         
         self.vx = (self.pos_x - self.last_x)/self.time_step
@@ -229,6 +262,7 @@ class kinematic_simulator:
             'NED'        # parent frame, typically 'world' or 'map'
         )
 
+    # NO LONGER USED
     def publish_odom(self):
         self.odom.header.stamp = time.time()
         self.odom.header.frame_id = "NED"
@@ -277,7 +311,7 @@ class kinematic_simulator:
         
         self.publish_velocity()
 
-        self.publish_odom()
+        # self.publish_odom()
         
 
         
@@ -290,6 +324,5 @@ if __name__ == '__main__':
         sim = kinematic_simulator()
         while not rospy.is_shutdown():
             sim.run()
-            rospy.loginfo_once(time.time())
     except rospy.ROSInterruptException:
         pass

@@ -6,7 +6,7 @@ from pymavlink import mavutil
 queue_size = 1
 if __name__ == '__main__':
     rospy.init_node('get_attitude_test')
-    rate =rospy.Rate(10)
+    rate =rospy.Rate(30)
 
     pub_position_point = rospy.Publisher('sitl_attitude',Point, queue_size=queue_size)
     pub_velocity_point = rospy.Publisher('sitl_attitude_omega',Point, queue_size=queue_size)

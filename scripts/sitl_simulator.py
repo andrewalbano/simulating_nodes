@@ -2,7 +2,7 @@
 
 import rospy
 import tf
-from tf.transformations import quaternion_from_euler, translation_matrix, euler_matrix, concatenate_matrices, translation_from_matrix, euler_from_matrix, quaternion_matrix
+from tf.transformations import quaternion_from_euler, translation_matrix, euler_matrix, concatenate_matrices, translation_from_matrix, euler_from_matrix, quaternion_matrix, quaternion_from_matrix
 from math import fmod
 import time
 import numpy as np
@@ -40,7 +40,7 @@ class kinematic_simulator:
 
         # Angular velocity in radians per second
         # self.angular_velocity_yaw = math.radians(10)  # 10 degrees per second
-        self.frequency = 30
+        self.frequency = 10
         self.rate = rospy.Rate(self.frequency)  # 10 Hz
 
         # Initial position and yaw
@@ -63,6 +63,8 @@ class kinematic_simulator:
         self.vyaw = 0
 
         self.vx_data = []
+
+        self.q = None
         
 
 
@@ -77,15 +79,15 @@ class kinematic_simulator:
         self.odom = Odometry() 
 
 
-        # subscribe to twist 
-        self.sub1 = rospy.Subscriber('sitl_xyz', Point, self.position_callback)
+        # # subscribe to twist 
+        # self.sub1 = rospy.Subscriber('sitl_xyz', Point, self.position_callback)
 
-        self.sub2 = rospy.Subscriber('sitl_attitude', Point, self.attitude_callback)
+        # self.sub2 = rospy.Subscriber('sitl_attitude', Point, self.attitude_callback)
         
 
-        self.sub3 = rospy.Subscriber('sitl_velocity_xyz', Point, self.lin_velocity_callback)
+        # self.sub3 = rospy.Subscriber('sitl_velocity_xyz', Point, self.lin_velocity_callback)
 
-        self.sub4 = rospy.Subscriber('sitl_attitude_omega', Point, self.angular_velocity_callback)
+        # self.sub4 = rospy.Subscriber('sitl_attitude_omega', Point, self.angular_velocity_callback)
 
 
         self.pub1 = rospy.Publisher('/state',PoseWithCovarianceStamped, queue_size=queue_size )
@@ -97,6 +99,18 @@ class kinematic_simulator:
         self.pub6 = rospy.Publisher('/plot_vy',Float32, queue_size=queue_size)
         self.pub7 = rospy.Publisher('/plot_vz',Float32, queue_size=queue_size)
         self.pub8 = rospy.Publisher('/plot_vyaw',Float32, queue_size=queue_size)
+
+
+
+        self.sub1 = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.position_callback)
+
+        # self.sub2 = rospy.Subscriber('sitl_attitude', Point, self.attitude_callback)
+        
+
+        # self.sub3 = rospy.Subscriber('sitl_velocity_xyz', Point, self.lin_velocity_callback)
+
+        # self.sub4 = rospy.Subscriber('sitl_attitude_omega', Point, self.angular_velocity_callback)
+
 
 
         
@@ -135,21 +149,29 @@ class kinematic_simulator:
         self.pub2.publish(self.path)
 
 
-    def position_callback(self,msg:Point):
-        self.last_x = self.pos_x
-        self.last_y = self.pos_y
-        self.last_z = self.pos_z
-    
+    def position_callback(self,msg:PoseStamped):
+        # transform from map to NED
+        R = euler_matrix(0,0,3.141592653589793)
+        T = translation_matrix((msg.pose.position.x, msg.pose.position.y, msg.pose.position.z))
+        transform = concatenate_matrices(R,T)
+        self.pos_x, self.pos_y, self.pos_z = translation_from_matrix(transform)
 
-        self.pos_x = msg.x
-        self.pos_y = msg.y
-        self.pos_z = msg.z
 
-        # self.time_step = self.start_time-time.time()
-        # self.start_time = time.time()
+
+
+        
+        self.q = [msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w]
+        Q = quaternion_matrix(self.q)
+
+        transform = concatenate_matrices(R,Q)
+
+        self.q = quaternion_from_matrix(transform)
+
+        # self.pos_x = msg.pose.position.x
+        # self.pos_y = msg.pose.position.y
+        # self.pos_z = msg.pose.position.z
 
     def attitude_callback(self,msg:Point):
-
         self.last_yaw = self.yaw
 
 
@@ -265,13 +287,16 @@ class kinematic_simulator:
 
     def broadcast_transform(self):
         # Send the updated transform
-        self.br.sendTransform(
-            (self.pos_x, self.pos_y, self.pos_z),
-            quaternion_from_euler(self.roll, self.pitch, self.yaw),
-            rospy.Time.now(),
-            'base_link',   # child frame
-            'NED'        # parent frame, typically 'world' or 'map'
-        )
+        try:
+            self.br.sendTransform(
+                (self.pos_x, self.pos_y, self.pos_z),
+                self.q,
+                rospy.Time.now(),
+                'base_link',   # child frame
+                'NED'        # parent frame, typically 'world' or 'map'
+            )
+        except: 
+            pass
 
     # NO LONGER USED
     def publish_odom(self):
@@ -315,12 +340,12 @@ class kinematic_simulator:
 
         # convert the linear velocity in ned to body frame 
         # the angular velocity is already in body frame 
-        self.ned2body() 
+        # self.ned2body() 
        
 
-        self.publish_pose()
+        # self.publish_pose()
         
-        self.publish_velocity()
+        # self.publish_velocity()
 
         # self.publish_odom()
         

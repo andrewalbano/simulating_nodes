@@ -15,7 +15,7 @@ if __name__ == '__main__':
     pos_point = Point()     #in ned frame
     velocity_point = Point()
 
-    rate = rospy.Rate(10)
+    rate = rospy.Rate(30)
 
     while not rospy.is_shutdown():
         # gettting position from simulation

@@ -27,7 +27,7 @@ if __name__ == '__main__':
             mavutil.mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED,  # Request specific message ID (BATTERY_STATUS)
             0, 0, 0, 0, 0, 0  # Unused parameters
         )  
-        msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=True)
+        msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=False)
         if not msg:
             continue
 

@@ -26,7 +26,7 @@ if __name__ == '__main__':
             mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE,  # Request specific message ID (BATTERY_STATUS)
             0, 0, 0, 0, 0, 0  # Unused parameters
         )  
-        msg = master.recv_match(type='ATTITUDE', blocking=True)
+        msg = master.recv_match(type='ATTITUDE', blocking=False)
         if not msg:
             continue
 
